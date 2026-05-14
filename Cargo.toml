@@ -1,0 +1,35 @@
+[package]
+name = "obsidian-launcher"
+version = "0.1.0"
+edition = "2021"
+description = "A keyboard-driven Obsidian vault searcher inspired by Vicinae"
+
+[[bin]]
+name = "obsidian-launcher"
+path = "src/main.rs"
+
+[[bin]]
+name = "obsidian-hotkey-daemon"
+path = "src/bin/hotkey-daemon.rs"
+
+[[bin]]
+name = "test_search"
+path = "src/bin/test_search.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tantivy = "0.22"
+notify = "6"
+pulldown-cmark = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+dirs = "5"
+iced = { version = "0.13", features = ["tokio", "advanced"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+rfd = "0.15"
+evdev = "0.12"
+nix = { version = "0.29", features = ["fs"] }
