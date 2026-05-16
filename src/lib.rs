@@ -46,7 +46,14 @@ const FOLDER_SVG: &[u8] = br##"<?xml version="1.0" ?>
 <path d="M47.745,11.9c-0.869,0-1.688-0.4-2.223-1.086l-7.254-9.299H0.632v24.666h89.965V11.9H47.745z" fill="#95AEC2"/>
 </svg>"##;
 
-const SETTINGS_SVG: &[u8] = br##"<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" fill="#BDC3C7" d="M97.55 85.718L45.407 33.574c-4.588-4.587 3.054-15.538-5.729-24.32L23.664 0l-3.381 3.38 8.832 8.831c3.381 3.38.849 10.983-2.545 14.377-3.367 3.367-10.977 5.906-14.357 2.525l-8.833-8.83L0 23.664l9.254 16.014c8.734 8.735 19.87 1.277 24.321 5.729l52.143 52.144A8.367 8.367 0 0 0 97.55 85.718zm-3.381 8.451a3.585 3.585 0 1 1-5.07-5.07 3.585 3.585 0 0 1 5.07 5.07z"/><path fill="#95A5A6" d="M33.682 12.334L22.512 1.151 20.283 3.38l8.832 8.831c3.381 3.38.849 10.983-2.545 14.377-3.367 3.367-10.977 5.906-14.357 2.525l-8.833-8.83-1.975 1.975 11.177 11.19c1.524 1.525 3.914 2.332 6.911 2.332 4.492 0 9.453-1.824 12.063-4.437 4.417-4.42 6.311-14.822 2.126-19.009zm62.064 75.615L45.775 37.972c-1.042-1.042-2.426-1.615-3.898-1.615s-2.857.574-3.898 1.615a5.522 5.522 0 0 0 0 7.798L87.95 95.746c1.041 1.042 2.426 1.615 3.898 1.615s2.857-.573 3.898-1.615a5.52 5.52 0 0 0 0-7.797zm-1.577 6.22a3.585 3.585 0 1 1-5.07-5.07 3.585 3.585 0 0 1 5.07 5.07z"/><path fill-rule="evenodd" clip-rule="evenodd" fill="#ECF0F1" d="M80 14L93 4l7 7-10 13h-5L55 54l-5-5 30-30v-5z"/><path fill-rule="evenodd" clip-rule="evenodd" fill="#BDC3C7" d="M52.5 51.5L55 54l30-30h5l10-13-3.5-3.5z"/><path fill-rule="evenodd" clip-rule="evenodd" fill="#D35400" d="M42.51 46.095l.854.845L5.768 84.161a5.931 5.931 0 0 0 0 8.447l5.119 5.068c2.356 2.332 5.17 3.326 7.526.994l38.603-38.216.853.845c.942.933 2.471.933 3.413 0s.942-2.446 0-3.379L45.923 42.716c-.942-.933-2.471-.933-3.413 0s-.943 2.446 0 3.379z"/><path fill-rule="evenodd" clip-rule="evenodd" fill="#E66612" d="M50.25 53.75L8.594 95.406l2.293 2.271c2.356 2.332 5.17 3.326 7.526.994l38.573-38.186-6.736-6.735z"/></svg>"##;
+const SETTINGS_SVG: &[u8] = br##"<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="#000000">
+<path fill-rule="evenodd" clip-rule="evenodd" fill="#BDC3C7" d="M97.55 85.718L45.407 33.574c-4.588-4.587 3.054-15.538-5.729-24.32L23.664 0l-3.381 3.38 8.832 8.831c3.381 3.38.849 10.983-2.545 14.377-3.367 3.367-10.977 5.906-14.357 2.525l-8.833-8.83L0 23.664l9.254 16.014c8.734 8.735 19.87 1.277 24.321 5.729l52.143 52.144A8.367 8.367 0 0 0 97.55 85.718zm-3.381 8.451a3.585 3.585 0 1 1-5.07-5.07 3.585 3.585 0 0 1 5.07 5.07z"/>
+<path fill="#95A5A6" d="M33.682 12.334L22.512 1.151 20.283 3.38l8.832 8.831c3.381 3.38.849 10.983-2.545 14.377-3.367 3.367-10.977 5.906-14.357 2.525l-8.833-8.83-1.975 1.975 11.177 11.19c1.524 1.525 3.914 2.332 6.911 2.332 4.492 0 9.453-1.824 12.063-4.437 4.417-4.42 6.311-14.822 2.126-19.009zm62.064 75.615L45.775 37.972c-1.042-1.042-2.426-1.615-3.898-1.615s-2.857.574-3.898 1.615a5.522 5.522 0 0 0 0 7.798L87.95 95.746c1.041 1.042 2.426 1.615 3.898 1.615s2.857-.573 3.898-1.615a5.52 5.52 0 0 0 0-7.797zm-1.577 6.22a3.585 3.585 0 1 1-5.07-5.07 3.585 3.585 0 0 1 5.07 5.07z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" fill="#ECF0F1" d="M80 14L93 4l7 7-10 13h-5L55 54l-5-5 30-30v-5z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" fill="#BDC3C7" d="M52.5 51.5L55 54l30-30h5l10-13-3.5-3.5z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" fill="#BCA1F3" d="M42.51 46.095l.854.845L5.768 84.161a5.931 5.931 0 0 0 0 8.447l5.119 5.068c2.356 2.332 5.17 3.326 7.526.994l38.603-38.216.853.845c.942.933 2.471.933 3.413 0s.942-2.446 0-3.379L45.923 42.716c-.942-.933-2.471-.933-3.413 0s-.943 2.446 0 3.379z"/>
+<path fill-rule="evenodd" clip-rule="evenodd" fill="#7146C7" d="M50.25 53.75L8.594 95.406l2.293 2.271c2.356 2.332 5.17 3.326 7.526.994l38.573-38.186-6.736-6.735z"/>
+</svg>"##;
 
 const LOGO_SVG: &[u8] = br##"<svg viewBox="0 0 397 512" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M324.709 475.437C321.564 498.795 298.704 517.043 275.987 510.743C243.618 501.826 206.139 487.918 172.416 485.326C167.97 484.984 120.732 481.403 120.732 481.403C112.376 480.808 104.533 477.157 98.6965 471.148L9.63858 379.448C-0.0941202 369.428 -2.72861 354.484 2.99039 341.74C2.99039 341.74 58.0589 220.728 60.1042 214.435C62.1495 208.142 69.6555 153.256 74.1035 123.77C75.2825 115.956 79.1405 108.793 85.0165 103.508L190.369 8.74822C205.027 -4.43479 227.778 -2.4812 239.972 13.0074L328.473 125.419C333.48 131.781 336.047 139.688 336.084 147.783C336.185 169.08 337.943 212.805 349.719 240.968C361.175 268.361 382.2 297.946 393.189 312.504C397.405 318.091 398.052 325.646 394.489 331.673C386.734 344.801 371.412 370.009 349.719 402.351C334.764 424.651 327.834 452.218 324.709 475.437Z" fill="#6C31E3"/>
@@ -68,6 +75,13 @@ const LOGO_SVG: &[u8] = br##"<svg viewBox="0 0 397 512" fill="none" xmlns="http:
 <radialGradient id="paint6_radial_1_115" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(147.891 279.224) rotate(80.2016) scale(146.696 311.515)"><stop stop-color="white" stop-opacity="0.25"/><stop offset="1" stop-color="white" stop-opacity="0.3"/></radialGradient>
 <radialGradient id="paint7_radial_1_115" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(342.401 398.999) rotate(-152.297) scale(223.528 703.43)"><stop stop-color="white" stop-opacity="0.21"/><stop offset="0.46738" stop-color="white" stop-opacity="0.19"/><stop offset="1" stop-color="white" stop-opacity="0.29"/></radialGradient>
 </defs>
+</svg>"##;
+
+const CLOSE_SVG: &[u8] = br##"<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="48" height="48" fill="white" fill-opacity="0.01"/>
+<path d="M24 44C35.0457 44 44 35.0457 44 24C44 12.9543 35.0457 4 24 4C12.9543 4 4 12.9543 4 24C4 35.0457 12.9543 44 24 44Z" fill="#7146C7" stroke="#000000" stroke-width="4" stroke-linejoin="round"/>
+<path d="M29.6569 18.3431L18.3432 29.6568" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M18.3432 18.3431L29.6569 29.6568" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"##;
 
 #[derive(Debug, Clone)]
@@ -684,7 +698,7 @@ fn search_view(state: &State) -> Element<'_, Message> {
         .style(|_t| container::Style {
             background: Some(iced::Color::from_rgb8(35, 35, 37).into()),
             border: iced::Border {
-                radius: 32.0.into(),
+                radius: 8.0.into(),
                 width: 0.0,
                 color: iced::Color::TRANSPARENT,
             },
@@ -790,12 +804,12 @@ fn settings_view(state: &State) -> Element<'_, Message> {
     let mut save_btn = button(text(if s.saving { "Saving..." } else { "Save" }).size(14))
         .padding(10)
         .style(|_theme, _status| button::Style {
-            background: Some(iced::Color::from_rgb8(34, 139, 34).into()),
+            background: Some(iced::Color::from_rgb8(113, 70, 199).into()),
             text_color: iced::Color::WHITE,
             border: iced::Border {
                 radius: 6.0.into(),
-                width: 1.0,
-                color: iced::Color::from_rgb8(80, 80, 80),
+                width: 0.0,
+                color: iced::Color::TRANSPARENT,
             },
             shadow: iced::Shadow::default(),
         });
@@ -820,8 +834,27 @@ fn settings_view(state: &State) -> Element<'_, Message> {
 
     let buttons = row![save_btn, cancel_btn].spacing(10);
 
-    let mut form = column![
+    let title_row = row![
         text("Settings").size(20),
+        horizontal_space(),
+        button(
+            Svg::new(svg::Handle::from_memory(CLOSE_SVG))
+                .width(18)
+                .height(18)
+        )
+            .on_press(Message::CloseSettings)
+            .padding(6)
+            .style(|_theme, _status| button::Style {
+                background: Some(iced::Color::from_rgb8(45, 45, 50).into()),
+                text_color: iced::Color::from_rgb8(150, 150, 160),
+                border: iced::Border { radius: 6.0.into(), width: 0.0, color: iced::Color::TRANSPARENT },
+                shadow: iced::Shadow::default(),
+            }),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let mut form = column![
+        title_row,
         Space::with_height(10),
         vault_row,
         Space::with_height(10),
@@ -996,10 +1029,21 @@ fn focus_obsidian() {
     {}
 }
 
-fn open_note(path: &str, _vault_path: &PathBuf) {
+fn encode_path(s: &str) -> String {
+    s.split('/')
+        .map(|part| urlencoding::encode(part))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn open_note(path: &str, vault_path: &PathBuf) {
     info!("Opening note: {}", path);
 
-    let url = format!("obsidian://open?file={}", urlencoding::encode(path));
+    let relative = path
+        .strip_prefix(vault_path.to_string_lossy().as_ref())
+        .map(|r| r.strip_prefix('/').unwrap_or(r))
+        .unwrap_or(path);
+    let url = format!("obsidian://open?file={}", encode_path(relative));
 
     info!("Opening URL: {}", url);
     if let Err(e) = Command::new("xdg-open").arg(&url).status() {

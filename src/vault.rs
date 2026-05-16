@@ -36,7 +36,9 @@ impl Vault {
             let path = entry.path();
 
             if path.is_dir() {
-                if path.file_name().map_or(false, |n| n == ".git" || n == ".obsidian") {
+                if path.file_name().map_or(false, |n| {
+                    n == ".git" || n == ".obsidian" || n == ".opencode" || n == "node_modules"
+                }) {
                     continue;
                 }
                 self.scan_dir(&path, notes)?;
