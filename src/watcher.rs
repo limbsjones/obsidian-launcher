@@ -49,7 +49,9 @@ impl VaultWatcher {
                                     .map_or(false, |ext| ext == "md" || ext == "MD")
                             }) {
                                 info!("Vault change detected: {:?}", event.paths);
-                                let _ = sender.blocking_send(WatcherEvent::VaultChanged);
+                                if let Err(e) = sender.blocking_send(WatcherEvent::VaultChanged) {
+                                    warn!("Failed to send watcher event (channel full?): {}", e);
+                                }
                             }
                         }
                     }

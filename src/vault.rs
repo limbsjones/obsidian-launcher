@@ -11,7 +11,6 @@ pub struct Note {
     pub title: String,
     pub content: String,
     pub tags: Vec<String>,
-    pub links: Vec<String>,
 }
 
 pub struct Vault {
@@ -56,7 +55,6 @@ impl Vault {
         let mut title = String::new();
         let mut text_content = String::new();
         let mut tags = Vec::new();
-        let mut links = Vec::new();
 
         let parser = Parser::new(&content);
         let mut in_h1 = false;
@@ -78,16 +76,17 @@ impl Vault {
 
                     for word in text.split_whitespace() {
                         if word.starts_with('#') && word.len() > 1 {
-                            tags.push(word.trim_start_matches('#').to_string());
+                            let tag = word.trim_start_matches('#');
+                            let tag = tag.trim_end_matches(|c: char| c.is_ascii_punctuation());
+                            if !tag.is_empty() {
+                                tags.push(tag.to_string());
+                            }
                         }
                     }
                 }
                 Event::Code(text) => {
                     text_content.push_str(&text);
                     text_content.push(' ');
-                }
-                Event::Start(Tag::Link { dest_url, .. }) => {
-                    links.push(dest_url.to_string());
                 }
                 _ => {}
             }
@@ -107,7 +106,82 @@ impl Vault {
             title,
             content: text_content,
             tags,
-            links,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_dir(name: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("obsidian-test-vault-{}-{}", name, id))
+    }
+
+    #[test]
+    fn test_parse_note_h1_title() {
+        let dir = test_dir("h1_title");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test-note.md");
+        std::fs::write(&path, "# My Title\n\nSome content here.").unwrap();
+
+        let vault = Vault::new(dir.clone());
+        let note = vault.parse_note(&path).unwrap();
+
+        assert_eq!(note.title, "My Title");
+        assert!(note.content.contains("My Title"));
+        assert!(note.content.contains("Some content here"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_parse_note_title_from_filename_when_no_h1() {
+        let dir = test_dir("filename_title");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("NoTitleNote.md");
+        std::fs::write(&path, "Just some content.\n\nNo heading here.").unwrap();
+
+        let vault = Vault::new(dir.clone());
+        let note = vault.parse_note(&path).unwrap();
+
+        assert_eq!(note.title, "NoTitleNote");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_parse_note_extracts_tags() {
+        let dir = test_dir("tags");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tags-note.md");
+        std::fs::write(&path, "# Tags Note\n\nThis is about #rust and #programming.").unwrap();
+
+        let vault = Vault::new(dir.clone());
+        let note = vault.parse_note(&path).unwrap();
+
+        assert!(note.tags.contains(&"rust".to_string()));
+        assert!(note.tags.contains(&"programming".to_string()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scan_skips_dot_git() {
+        let dir = test_dir("scan_skips_git");
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::write(dir.join("note.md"), "# Hello").unwrap();
+        std::fs::write(dir.join(".git").join("config"), "irrelevant").unwrap();
+
+        let vault = Vault::new(dir.clone());
+        let notes = vault.scan().unwrap();
+
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "Hello");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

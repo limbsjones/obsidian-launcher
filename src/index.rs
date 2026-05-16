@@ -13,7 +13,7 @@ use tracing::info;
 
 use crate::vault::Note;
 
-const NGRAM_MIN: usize = 2;
+const NGRAM_MIN: usize = 1;
 const NGRAM_MAX: usize = 15;
 
 pub struct SearchIndex {
@@ -45,12 +45,14 @@ impl SearchIndex {
         schema_builder.build()
     }
 
-    fn register_ngram_tokenizer(index: &mut Index) {
-        let ngram_tokenizer = NgramTokenizer::new(NGRAM_MIN, NGRAM_MAX, false).unwrap();
+    fn register_ngram_tokenizer(index: &mut Index) -> Result<()> {
+        let ngram_tokenizer = NgramTokenizer::new(NGRAM_MIN, NGRAM_MAX, false)
+            .map_err(|e| anyhow::anyhow!("Failed to create ngram tokenizer: {}", e))?;
         let ngram_analyzer = TextAnalyzer::builder(ngram_tokenizer)
             .filter(LowerCaser)
             .build();
         index.tokenizers().register("ngram", ngram_analyzer);
+        Ok(())
     }
 
     pub fn new(index_path: &Path) -> Result<Self> {
@@ -59,7 +61,7 @@ impl SearchIndex {
         std::fs::create_dir_all(index_path)?;
 
         let mut index = Index::create_in_dir(index_path, schema.clone())?;
-        Self::register_ngram_tokenizer(&mut index);
+        Self::register_ngram_tokenizer(&mut index)?;
 
         Ok(Self { schema, index })
     }
@@ -75,7 +77,7 @@ impl SearchIndex {
             Index::create_in_dir(index_path, schema.clone())?
         };
 
-        Self::register_ngram_tokenizer(&mut index);
+        Self::register_ngram_tokenizer(&mut index)?;
 
         Ok(Self { schema, index })
     }
@@ -83,10 +85,10 @@ impl SearchIndex {
     pub fn index_notes(&mut self, notes: &[Note]) -> Result<()> {
         info!("Indexing {} notes...", notes.len());
 
-        let title = self.schema.get_field("title").unwrap();
-        let content = self.schema.get_field("content").unwrap();
-        let path = self.schema.get_field("path").unwrap();
-        let tags = self.schema.get_field("tags").unwrap();
+        let title = self.schema.get_field("title").expect("schema field 'title'");
+        let content = self.schema.get_field("content").expect("schema field 'content'");
+        let path = self.schema.get_field("path").expect("schema field 'path'");
+        let tags = self.schema.get_field("tags").expect("schema field 'tags'");
 
         let mut index_writer: IndexWriter = self.index.writer(50_000_000)?;
 
@@ -113,16 +115,19 @@ impl SearchIndex {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
 
-        let title = self.schema.get_field("title").unwrap();
-        let content = self.schema.get_field("content").unwrap();
-        let path = self.schema.get_field("path").unwrap();
-        let tags = self.schema.get_field("tags").unwrap();
+        let title = self.schema.get_field("title").expect("schema field 'title'");
+        let content = self.schema.get_field("content").expect("schema field 'content'");
+        let path = self.schema.get_field("path").expect("schema field 'path'");
+        let tags = self.schema.get_field("tags").expect("schema field 'tags'");
 
         let query_parser = QueryParser::for_index(&self.index, vec![title, content, tags]);
-        let query = match query_parser.parse_query(query_str) {
+        let escaped = query_str
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        let query = match query_parser.parse_query(&format!("\"{}\"", escaped)) {
             Ok(q) => q,
             Err(e) => {
-                info!("Query parse error: {}", e);
+                info!("Query parse error for '{}': {}", escaped, e);
                 return Ok(Vec::new());
             }
         };

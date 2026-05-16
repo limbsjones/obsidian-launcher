@@ -1,0 +1,7 @@
+target/
+.directory
+.env
+*.swp
+*.swo
+*~
+.DS_Store

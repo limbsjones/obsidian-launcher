@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -40,19 +41,18 @@ impl HotkeyDaemon {
 
         info!("Parsed hotkey: modifiers={:?}, key={:?}", target_modifiers, target_key);
 
-        let mut active_modifiers: HashMap<Key, bool> = HashMap::new();
+        let pressed_modifiers: Arc<Mutex<HashSet<Key>>> = Arc::new(Mutex::new(HashSet::new()));
 
         for mut device in devices {
             let dev_name = device.name().unwrap_or("unknown").to_string();
             info!("Listening on keyboard: {}", dev_name);
 
-            let target_mods_clone = target_modifiers.clone();
-            let target_key_clone = target_key;
-            let config_clone = self.config.clone();
+            let target_mods = target_modifiers.clone();
+            let target_k = target_key;
+            let config = self.config.clone();
+            let mods = pressed_modifiers.clone();
 
             thread::spawn(move || {
-                let mut pressed_modifiers: HashMap<Key, bool> = HashMap::new();
-
                 loop {
                     let events = match device.fetch_events() {
                         Ok(events) => events,
@@ -78,21 +78,30 @@ impl HotkeyDaemon {
 
                         if is_press {
                             if is_modifier(key) {
-                                pressed_modifiers.insert(key, true);
+                                let mut map = mods.lock().unwrap();
+                                map.insert(key);
                             }
 
-                            if key == target_key_clone {
-                                let mods_match = target_mods_clone.iter().all(|m| {
-                                    pressed_modifiers.get(m).copied().unwrap_or(false)
-                                });
+                            if key == target_k {
+                                let map = mods.lock().unwrap();
+                                let pressed_count = modifier_group_count(&map);
+                                let target_count = target_modifier_group_count(&target_mods);
+                                let mods_match = target_mods.iter().all(|m| modifier_active(*m, &map));
 
-                                if mods_match && !target_mods_clone.is_empty() || (target_mods_clone.is_empty() && pressed_modifiers.is_empty()) {
+                                let hotkey_fires = if target_count > 0 {
+                                    mods_match && pressed_count == target_count
+                                } else {
+                                    pressed_count == 0
+                                };
+
+                                if hotkey_fires {
                                     info!("Hotkey detected! Launching app...");
-                                    launch_app(&config_clone);
+                                    launch_app(&config);
                                 }
                             }
                         } else if is_release {
-                            pressed_modifiers.remove(&key);
+                            let mut map = mods.lock().unwrap();
+                            map.remove(&key);
                         }
                     }
                 }
@@ -165,6 +174,65 @@ fn is_modifier(key: Key) -> bool {
             | Key::KEY_LEFTMETA
             | Key::KEY_RIGHTMETA
     )
+}
+
+fn modifier_active(key: Key, pressed: &HashSet<Key>) -> bool {
+    match key {
+        Key::KEY_LEFTCTRL | Key::KEY_RIGHTCTRL => {
+            pressed.contains(&Key::KEY_LEFTCTRL) || pressed.contains(&Key::KEY_RIGHTCTRL)
+        }
+        Key::KEY_LEFTALT | Key::KEY_RIGHTALT => {
+            pressed.contains(&Key::KEY_LEFTALT) || pressed.contains(&Key::KEY_RIGHTALT)
+        }
+        Key::KEY_LEFTSHIFT | Key::KEY_RIGHTSHIFT => {
+            pressed.contains(&Key::KEY_LEFTSHIFT) || pressed.contains(&Key::KEY_RIGHTSHIFT)
+        }
+        Key::KEY_LEFTMETA | Key::KEY_RIGHTMETA => {
+            pressed.contains(&Key::KEY_LEFTMETA) || pressed.contains(&Key::KEY_RIGHTMETA)
+        }
+        _ => false,
+    }
+}
+
+fn modifier_group_count(pressed: &HashSet<Key>) -> usize {
+    let mut count = 0;
+    if pressed.contains(&Key::KEY_LEFTCTRL) || pressed.contains(&Key::KEY_RIGHTCTRL) {
+        count += 1;
+    }
+    if pressed.contains(&Key::KEY_LEFTALT) || pressed.contains(&Key::KEY_RIGHTALT) {
+        count += 1;
+    }
+    if pressed.contains(&Key::KEY_LEFTSHIFT) || pressed.contains(&Key::KEY_RIGHTSHIFT) {
+        count += 1;
+    }
+    if pressed.contains(&Key::KEY_LEFTMETA) || pressed.contains(&Key::KEY_RIGHTMETA) {
+        count += 1;
+    }
+    count
+}
+
+fn target_modifier_group_count(target: &[Key]) -> usize {
+    let mut count = 0;
+    let mut has_ctrl = false;
+    let mut has_alt = false;
+    let mut has_shift = false;
+    let mut has_meta = false;
+
+    for k in target {
+        match *k {
+            Key::KEY_LEFTCTRL | Key::KEY_RIGHTCTRL => has_ctrl = true,
+            Key::KEY_LEFTALT | Key::KEY_RIGHTALT => has_alt = true,
+            Key::KEY_LEFTSHIFT | Key::KEY_RIGHTSHIFT => has_shift = true,
+            Key::KEY_LEFTMETA | Key::KEY_RIGHTMETA => has_meta = true,
+            _ => {}
+        }
+    }
+
+    if has_ctrl { count += 1; }
+    if has_alt { count += 1; }
+    if has_shift { count += 1; }
+    if has_meta { count += 1; }
+    count
 }
 
 fn parse_hotkey(hotkey: &str) -> (Vec<Key>, Key) {
@@ -256,7 +324,7 @@ fn parse_hotkey(hotkey: &str) -> (Vec<Key>, Key) {
     (modifiers, key)
 }
 
-fn launch_app(config: &Config) {
+fn launch_app(_config: &Config) {
     let exe_path = std::env::current_exe().unwrap_or_default();
     let app_path = exe_path.parent().unwrap_or(Path::new(".")).join("obsidian-launcher");
 
@@ -265,5 +333,112 @@ fn launch_app(config: &Config) {
     match Command::new(&app_path).spawn() {
         Ok(_) => info!("App launched successfully"),
         Err(e) => warn!("Failed to launch app: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_hotkey_super_space() {
+        let (mods, key) = parse_hotkey("Super+Space");
+        assert_eq!(mods, vec![Key::KEY_LEFTMETA]);
+        assert_eq!(key, Key::KEY_SPACE);
+    }
+
+    #[test]
+    fn test_parse_hotkey_ctrl_shift_f5() {
+        let (mods, key) = parse_hotkey("Ctrl+Shift+F5");
+        assert_eq!(mods, vec![Key::KEY_LEFTCTRL, Key::KEY_LEFTSHIFT]);
+        assert_eq!(key, Key::KEY_F5);
+    }
+
+    #[test]
+    fn test_parse_hotkey_just_key() {
+        let (mods, key) = parse_hotkey("Space");
+        assert!(mods.is_empty());
+        assert_eq!(key, Key::KEY_SPACE);
+    }
+
+    #[test]
+    fn test_parse_hotkey_empty_defaults_to_space() {
+        let (mods, key) = parse_hotkey("");
+        assert!(mods.is_empty());
+        assert_eq!(key, Key::KEY_SPACE);
+    }
+
+    #[test]
+    fn test_parse_hotkey_aliases() {
+        let (mods, _key) = parse_hotkey("Control+Option+Meta");
+        assert_eq!(mods, vec![Key::KEY_LEFTCTRL, Key::KEY_LEFTALT, Key::KEY_LEFTMETA]);
+    }
+
+    #[test]
+    fn test_is_modifier_true() {
+        assert!(is_modifier(Key::KEY_LEFTCTRL));
+        assert!(is_modifier(Key::KEY_RIGHTCTRL));
+        assert!(is_modifier(Key::KEY_LEFTALT));
+        assert!(is_modifier(Key::KEY_LEFTMETA));
+    }
+
+    #[test]
+    fn test_is_modifier_false() {
+        assert!(!is_modifier(Key::KEY_A));
+        assert!(!is_modifier(Key::KEY_SPACE));
+        assert!(!is_modifier(Key::KEY_ENTER));
+    }
+
+    #[test]
+    fn test_modifier_active_left_right() {
+        let mut pressed = HashSet::new();
+        pressed.insert(Key::KEY_LEFTCTRL);
+        assert!(modifier_active(Key::KEY_RIGHTCTRL, &pressed));
+    }
+
+    #[test]
+    fn test_modifier_active_missing() {
+        let pressed = HashSet::new();
+        assert!(!modifier_active(Key::KEY_LEFTMETA, &pressed));
+    }
+
+    #[test]
+    fn test_modifier_group_count_none() {
+        let pressed = HashSet::new();
+        assert_eq!(modifier_group_count(&pressed), 0);
+    }
+
+    #[test]
+    fn test_modifier_group_count_one() {
+        let mut pressed = HashSet::new();
+        pressed.insert(Key::KEY_LEFTCTRL);
+        assert_eq!(modifier_group_count(&pressed), 1);
+    }
+
+    #[test]
+    fn test_modifier_group_count_left_right_same_group() {
+        let mut pressed = HashSet::new();
+        pressed.insert(Key::KEY_LEFTCTRL);
+        pressed.insert(Key::KEY_RIGHTCTRL);
+        assert_eq!(modifier_group_count(&pressed), 1);
+    }
+
+    #[test]
+    fn test_modifier_group_count_multiple_groups() {
+        let mut pressed = HashSet::new();
+        pressed.insert(Key::KEY_LEFTCTRL);
+        pressed.insert(Key::KEY_LEFTALT);
+        assert_eq!(modifier_group_count(&pressed), 2);
+    }
+
+    #[test]
+    fn test_target_modifier_group_count() {
+        assert_eq!(target_modifier_group_count(&[]), 0);
+        assert_eq!(target_modifier_group_count(&[Key::KEY_LEFTCTRL]), 1);
+        assert_eq!(target_modifier_group_count(&[Key::KEY_LEFTCTRL, Key::KEY_LEFTALT]), 2);
+        assert_eq!(
+            target_modifier_group_count(&[Key::KEY_LEFTCTRL, Key::KEY_LEFTALT, Key::KEY_LEFTMETA]),
+            3
+        );
     }
 }
