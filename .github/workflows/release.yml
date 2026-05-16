@@ -1,0 +1,33 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libevdev-dev
+
+      - name: Build
+        run: cargo build --release --bin obsidian-launcher --bin obsidian-hotkey-daemon
+
+      - name: Create release archive
+        run: |
+          mkdir -p obsidian-launcher
+          cp target/release/obsidian-launcher obsidian-launcher/
+          cp target/release/obsidian-hotkey-daemon obsidian-launcher/
+          cp setup-daemon.sh obsidian-launcher/
+          cp obsidian-hotkey-daemon.service obsidian-launcher/
+          cp config.example.toml obsidian-launcher/
+          tar czf obsidian-launcher-x86_64.tar.gz obsidian-launcher/
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: obsidian-launcher-x86_64.tar.gz
