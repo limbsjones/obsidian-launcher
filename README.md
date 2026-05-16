@@ -1,16 +1,21 @@
 # Obsidian Launcher
 
-Un lanceur/recherche GUI pour Obsidian, inspiré par [Vicinae](https://docs.vicinae.com/).
+A keyboard-driven GUI launcher and search tool for Obsidian vaults, inspired by [Vicinae](https://docs.vicinae.com/).
+
+![Screenshot](screenshot.png)
 
 ## Features
 
-- **GUI avec `iced`** - fenêtre avec recherche en temps réel
-- Recherche full-text dans ton vault Obsidian via `tantivy`
-- **File watcher** - re-indexation automatique quand une note change (`notify`)
-- Navigation clavier (↑↓ Enter Esc)
-- Preview des 3 premières lignes de chaque note
-- Ouverture des notes via l'URI `obsidian://`
-- Rebuild d'index avec `Ctrl+R`
+- **Instant full-text search** across your entire Obsidian vault using `tantivy` with ngram tokenization
+- **Spotlight-style floating window** with rounded corners, built with `iced`
+- **Live re-indexing** via file watcher (`notify`) — no manual rebuild needed
+- **Global hotkey daemon** (`evdev`) — works on X11 and Wayland
+- **Keyboard navigation** (↑↓ to select, Enter to open, Esc to close)
+- **Obsidian URI integration** — opens notes directly in Obsidian
+- **Search highlighting** — passes the query to Obsidian for in-document highlighting
+- **Click to open** — results are clickable with a mouse
+- **Custom SVG icons** — folder and settings icons
+- **Settings UI** — configure vault path, max results, and hotkey from the GUI
 
 ## Installation
 
@@ -18,14 +23,14 @@ Un lanceur/recherche GUI pour Obsidian, inspiré par [Vicinae](https://docs.vici
 cargo build --release
 ```
 
-Le binaire sera dans `target/release/obsidian-launcher`.
+The binary will be at `target/release/obsidian-launcher`.
 
 ## Configuration
 
-Le fichier de config est à `~/.config/obsidian-launcher/config.toml` :
+Config file at `~/.config/obsidian-launcher/config.toml` (auto-created on first launch):
 
 ```toml
-vault_path = "/chemin/vers/ton/vault"
+vault_path = "/path/to/your/vault"
 max_results = 50
 hotkey = "Super+Space"
 ```
@@ -36,65 +41,99 @@ hotkey = "Super+Space"
 ./target/release/obsidian-launcher
 ```
 
-### Contrôles
+Or install the binary:
+```bash
+cp target/release/obsidian-launcher ~/.cargo/bin/
+obsidian-launcher
+```
 
-| Touche | Action |
-|--------|--------|
-| `↑` / `↓` | Naviguer les résultats |
-| `Enter` | Ouvrir la note sélectionnée |
-| `Esc` | Fermer l'app |
-| `Ctrl+R` | Rebuild l'index |
+### Controls
 
-### Hotkey global (Wayland/X11)
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate results |
+| `Enter` | Open selected note |
+| `Esc` | Close app |
+| `Ctrl+R` | Rebuild search index |
+| `Ctrl+,` | Open settings |
 
-L'app inclut un **daemon** qui écoute le hotkey automatiquement via `evdev` (fonctionne sur X11 et Wayland).
+### Global Hotkey (Wayland/X11)
 
-**Installation automatique :**
+The app includes a **daemon** that listens for a global hotkey via `evdev` (works on X11 and Wayland).
+
+**Automatic setup:**
 ```bash
 chmod +x setup-daemon.sh
 ./setup-daemon.sh
 ```
 
-**Manuellement :**
+**Manual setup:**
 ```bash
-# 1. Build et installe le daemon
+# 1. Build and install the daemon
 cargo build --release --bin obsidian-hotkey-daemon
 cp target/release/obsidian-hotkey-daemon ~/.cargo/bin/
 
-# 2. Configure le hotkey dans ~/.config/obsidian-launcher/config.toml
+# 2. Configure hotkey in ~/.config/obsidian-launcher/config.toml
 #    hotkey = "Super+Space"
 
-# 3. Installe le service systemd
+# 3. Install systemd user service
 mkdir -p ~/.config/systemd/user/
 cp obsidian-hotkey-daemon.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now obsidian-hotkey-daemon
 
-# 4. Vérifie
+# 4. Check status
 systemctl --user status obsidian-hotkey-daemon
 journalctl --user -u obsidian-hotkey-daemon -f
 ```
 
-**Note** : Le daemon lit directement `/dev/input/event*` pour capturer les touches. Si tu as des problèmes de permission, ajoute-toi au groupe `input` :
+**Note:** The daemon reads `/dev/input/event*` directly for key capture. If you have permission issues, add yourself to the `input` group:
 ```bash
 sudo usermod -aG input $USER
 ```
 
+You'll also need `xdotool` or `wmctrl` for window focus support on X11:
+```bash
+sudo pacman -S xdotool wmctrl   # Arch
+sudo apt install xdotool wmctrl  # Debian/Ubuntu
+```
+
 ## Architecture
 
-- `vault.rs` - Scan et parsing des notes `.md`
-- `index.rs` - Index full-text avec Tantivy + ngram tokenizer
-- `config.rs` - Gestion de la configuration
-- `watcher.rs` - File watcher avec debounce (2s)
-- `hotkey_daemon.rs` - Daemon pour hotkey global via evdev
-- `main.rs` - Application GUI `iced`
+```
+src/
+├── main.rs            # App entry point
+├── lib.rs             # GUI state machine, views, application logic
+├── config.rs          # Config load/save (TOML)
+├── index.rs           # Tantivy full-text search index
+├── vault.rs           # Vault scanning and .md parsing
+├── watcher.rs         # File watcher with debounce
+├── hotkey_daemon.rs   # Global hotkey daemon (evdev)
+└── bin/
+    ├── hotkey-daemon.rs  # Daemon binary entry point
+    └── test_search.rs    # Search test/debug binary
+```
 
-**Binaires :**
-- `obsidian-launcher` - GUI de recherche
-- `obsidian-hotkey-daemon` - Daemon background pour le hotkey
+**Binaries:**
+- `obsidian-launcher` — GUI search application
+- `obsidian-hotkey-daemon` — Background hotkey listener daemon
+- `test_search` — Command-line search test tool
+
+## Development
+
+```bash
+# Run tests
+cargo test
+
+# Build in debug mode
+cargo build
+
+# Build in release mode
+cargo build --release
+```
 
 ## TODO
 
-- [ ] Fenêtre flottante sans bordure (style Spotlight) avec `gtk-layer-shell`
-- [ ] Support des wikilinks `[[...]]` dans la recherche
-- [ ] Package AppImage / deb
+- [ ] Floating borderless window (Spotlight style) with `gtk-layer-shell`
+- [ ] Wikilink `[[...]]` search support
+- [ ] AppImage / deb packaging
