@@ -2937,6 +2937,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "urlencoding",
+ "wayland-client",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]

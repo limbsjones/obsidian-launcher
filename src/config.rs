@@ -21,6 +21,13 @@ fn config_dir() -> PathBuf {
     })
 }
 
+pub fn socket_path() -> PathBuf {
+    dirs::runtime_dir()
+        .unwrap_or_else(|| std::env::temp_dir())
+        .join("obsidian-launcher.sock")
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub vault_path: PathBuf,

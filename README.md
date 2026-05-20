@@ -134,6 +134,6 @@ cargo build --release
 
 ## TODO
 
-- [ ] Floating borderless window (Spotlight style) with `gtk-layer-shell`
+- [x] Floating borderless window (Spotlight style) — `decorations: false`, `transparent: true`, `Level::AlwaysOnTop`, `override_redirect` (X11), détection Wayland layer-shell
 - [x] Wikilink `[[...]]` search support — parsed, indexed, searchable
 - [ ] AppImage / deb packaging
