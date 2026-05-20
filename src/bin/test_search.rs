@@ -27,8 +27,9 @@ fn main() {
     for query in &["youtube", "structure", "man", "pages", "program", "search", "yout", "stru", "sea", "prog", "t", "te", "man p"] {
         let results = search_index.search(query, config.max_results).expect("Search failed");
         println!("Query '{}': {} results", query, results.len());
-        for (title, path) in &results {
-            println!("  -> {} ({})", title, path);
+        for (title, path, wikilinks) in &results {
+            let wl = if wikilinks.is_empty() { String::new() } else { format!(" [[{}]]", wikilinks.len()) };
+            println!("  -> {} ({}){}", title, path, wl);
         }
     }
 }

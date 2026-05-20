@@ -35,13 +35,17 @@ impl SearchIndex {
         content_options = content_options.set_indexing_options(ngram_indexing.clone());
 
         let mut tags_options = TextOptions::default();
-        tags_options = tags_options.set_indexing_options(ngram_indexing);
+        tags_options = tags_options.set_indexing_options(ngram_indexing.clone());
+
+        let mut wikilinks_options = TextOptions::default();
+        wikilinks_options = wikilinks_options.set_indexing_options(ngram_indexing);
 
         let mut schema_builder = Schema::builder();
         schema_builder.add_text_field("title", title_options);
         schema_builder.add_text_field("content", content_options);
         schema_builder.add_text_field("path", STORED);
         schema_builder.add_text_field("tags", tags_options);
+        schema_builder.add_text_field("wikilinks", wikilinks_options);
         schema_builder.build()
     }
 
@@ -89,6 +93,7 @@ impl SearchIndex {
         let content = self.schema.get_field("content").expect("schema field 'content'");
         let path = self.schema.get_field("path").expect("schema field 'path'");
         let tags = self.schema.get_field("tags").expect("schema field 'tags'");
+        let wikilinks = self.schema.get_field("wikilinks").expect("schema field 'wikilinks'");
 
         let mut index_writer: IndexWriter = self.index.writer(50_000_000)?;
 
@@ -97,12 +102,14 @@ impl SearchIndex {
         for note in notes {
             let path_str = note.path.to_string_lossy().to_string();
             let tags_str = note.tags.join(" ");
+            let wikilinks_str = note.wikilinks.join(" ");
 
             index_writer.add_document(doc![
                 title => note.title.as_str(),
                 content => note.content.as_str(),
                 path => path_str.as_str(),
                 tags => tags_str.as_str(),
+                wikilinks => wikilinks_str.as_str(),
             ])?;
         }
 
@@ -111,7 +118,7 @@ impl SearchIndex {
         Ok(())
     }
 
-    pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<(String, String)>> {
+    pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<(String, String, Vec<String>)>> {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
 
@@ -120,7 +127,9 @@ impl SearchIndex {
         let path = self.schema.get_field("path").expect("schema field 'path'");
         let tags = self.schema.get_field("tags").expect("schema field 'tags'");
 
-        let query_parser = QueryParser::for_index(&self.index, vec![title, content, tags]);
+        let wikilinks = self.schema.get_field("wikilinks").expect("schema field 'wikilinks'");
+
+        let query_parser = QueryParser::for_index(&self.index, vec![title, content, tags, wikilinks]);
         let escaped = query_str
             .replace('\\', "\\\\")
             .replace('"', "\\\"");
@@ -152,8 +161,18 @@ impl SearchIndex {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let wikilinks_val = doc
+                .get_first(wikilinks)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let wikilinks_list: Vec<String> = if wikilinks_val.is_empty() {
+                Vec::new()
+            } else {
+                wikilinks_val.split_whitespace().map(|s| s.to_string()).collect()
+            };
             info!("Hit: title='{}', path='{}'", title_val, path_val);
-            hits.push((title_val, path_val));
+            hits.push((title_val, path_val, wikilinks_list));
         }
 
         Ok(hits)

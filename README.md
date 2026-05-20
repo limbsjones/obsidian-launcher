@@ -135,5 +135,5 @@ cargo build --release
 ## TODO
 
 - [ ] Floating borderless window (Spotlight style) with `gtk-layer-shell`
-- [ ] Wikilink `[[...]]` search support
+- [x] Wikilink `[[...]]` search support — parsed, indexed, searchable
 - [ ] AppImage / deb packaging

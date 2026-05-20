@@ -11,6 +11,7 @@ pub struct Note {
     pub title: String,
     pub content: String,
     pub tags: Vec<String>,
+    pub wikilinks: Vec<String>,
 }
 
 pub struct Vault {
@@ -50,6 +51,27 @@ impl Vault {
             }
         }
         Ok(())
+    }
+
+    fn parse_wikilinks(&self, content: &str) -> Vec<String> {
+        let mut wikilinks = Vec::new();
+        let mut remaining = content;
+        while let Some(start) = remaining.find("[[") {
+            if let Some(end) = remaining[start..].find("]") {
+                let link_start = start + 2;
+                let link_end = start + end;
+                let link = &remaining[link_start..link_end];
+                // Handle [[Title|Display]] — take the first part (the target)
+                let target = link.split('|').next().unwrap_or("").trim();
+                if !target.is_empty() {
+                    wikilinks.push(target.to_string());
+                }
+                remaining = &remaining[link_end + 2..];
+            } else {
+                break;
+            }
+        }
+        wikilinks
     }
 
     fn parse_note(&self, path: &Path) -> Result<Note> {
@@ -101,13 +123,17 @@ impl Vault {
                 .unwrap_or_default();
         }
 
-        info!("Parsed note: title='{}', content_len={}", title, text_content.len());
+        // Parse wikilinks from the raw markdown content
+        let wikilinks = self.parse_wikilinks(&content);
+
+        info!("Parsed note: title='{}', content_len={}, wikilinks={:?}", title, text_content.len(), wikilinks);
 
         Ok(Note {
             path: path.to_path_buf(),
             title,
             content: text_content,
             tags,
+            wikilinks,
         })
     }
 }
@@ -151,6 +177,27 @@ mod tests {
         let note = vault.parse_note(&path).unwrap();
 
         assert_eq!(note.title, "NoTitleNote");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_parse_note_extracts_wikilinks() {
+        let dir = test_dir("wikilinks");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("wikilinks-note.md");
+        std::fs::write(
+            &path,
+            "# Wikilinks Note\n\nThis references [[Another Note]] and [[Target Page|Display Text]] here.",
+        )
+        .unwrap();
+
+        let vault = Vault::new(dir.clone());
+        let note = vault.parse_note(&path).unwrap();
+
+        assert!(note.wikilinks.contains(&"Another Note".to_string()));
+        assert!(note.wikilinks.contains(&"Target Page".to_string()));
+        assert_eq!(note.wikilinks.len(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

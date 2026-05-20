@@ -84,6 +84,14 @@ const CLOSE_SVG: &[u8] = br##"<svg viewBox="0 0 48 48" fill="none" xmlns="http:/
 <path d="M18.3432 18.3431L29.6569 29.6568" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>"##;
 
+const NOTE_SVG: &[u8] = br##"<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none">
+<rect x="2" y="2" width="20" height="20" rx="0"/>
+<rect x="2" y="2" width="20" height="20" rx="0" fill="#7146C7" opacity="0.1"/>
+<line x1="7" y1="8" x2="17" y2="8" stroke="#7146C7" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="7" y1="12" x2="17" y2="12" stroke="#7146C7" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="7" y1="16" x2="12" y2="16" stroke="#7146C7" stroke-width="1.5" stroke-linecap="round"/>
+</svg>"##;
+
 #[derive(Debug, Clone)]
 enum Screen {
     Search,
@@ -120,6 +128,7 @@ struct SearchResult {
     title: String,
     path: String,
     folder: String,
+    wikilinks: Vec<String>,
 }
 
 struct SettingsForm {
@@ -251,12 +260,13 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                     info!("Search returned {} results", results.len());
 
                     let mut search_results = Vec::new();
-                    for (title, path) in results {
+                    for (title, path, wikilinks) in results {
                         let folder = extract_folder(&path);
                         search_results.push(SearchResult {
                             title,
                             path,
                             folder,
+                            wikilinks,
                         });
                     }
                     search_results
@@ -595,18 +605,42 @@ fn search_view(state: &State) -> Element<'_, Message> {
         for (i, result) in state.results.iter().enumerate() {
             let is_selected = i == state.selected;
 
-            let row_content = row![
-                text(strip_emoji(&result.title)).size(15)
+            let mut row_children: Vec<Element<'_, Message>> = vec![
+                Svg::new(svg::Handle::from_memory(NOTE_SVG))
+                    .width(16)
+                    .height(16)
+                    .into(),
+                text(strip_emoji(&result.title)).size(14)
                     .style(move |_theme| text::Style {
                         color: Some(if is_selected { iced::Color::from_rgb8(255, 255, 255) } else { iced::Color::from_rgb8(210, 210, 220) }),
-                    }),
-                horizontal_space(),
+                    })
+                    .into(),
+                horizontal_space().into(),
+            ];
+
+            // Add wikilink indicator if the note has outgoing wikilinks
+            if !result.wikilinks.is_empty() {
+                let wikilink_count = result.wikilinks.len();
+                row_children.push(
+                    text(format!("[[{}]]", wikilink_count)).size(9)
+                        .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(113, 70, 199)) })
+                        .into()
+                );
+            }
+
+            row_children.push(
                 Svg::new(svg::Handle::from_memory(FOLDER_SVG))
                     .width(12)
-                    .height(12),
-                text(format!(" {}", result.folder)).size(11)
-                    .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(120, 120, 140)) }),
-            ]
+                    .height(12)
+                    .into()
+            );
+            row_children.push(
+                text(format!(" {}", result.folder)).size(10)
+                    .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(120, 120, 140)) })
+                    .into()
+            );
+
+            let row_content = row(row_children)
             .align_y(iced::Alignment::Center)
             .spacing(8);
 
