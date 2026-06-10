@@ -39,6 +39,11 @@ fn results_scroll_id() -> &'static scrollable::Id {
     ID.get_or_init(|| scrollable::Id::new("results-scroll"))
 }
 
+fn vault_path_input_id() -> &'static text_input::Id {
+    static ID: OnceLock<text_input::Id> = OnceLock::new();
+    ID.get_or_init(|| text_input::Id::new("vault-path-input"))
+}
+
 const CARD_HEIGHT: f32 = 42.0;
 
 const FOLDER_SVG: &[u8] = br##"<?xml version="1.0" ?>
@@ -77,6 +82,7 @@ const OBSIDIAN_SVG: &[u8] = include_bytes!("../icons/Obsidian.svg");
 enum Screen {
     Search,
     Settings,
+    Onboarding,
 }
 
 #[derive(Debug, Clone)]
@@ -165,8 +171,11 @@ impl Default for State {
                 Config::default()
             }
         };
+        // Detect if we need onboarding (no vault configured)
+        let needs_onboarding = config.vault_path.as_os_str().is_empty() || !config.vault_path.exists();
+
         let mut state = Self {
-            screen: Screen::Search,
+            screen: if needs_onboarding { Screen::Onboarding } else { Screen::Search },
             config: config.clone(),
             search_query: String::new(),
             results: Vec::new(),
@@ -372,9 +381,14 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                 }
             } else if let Screen::Settings = state.screen {
                 if matches!(key, keyboard::Key::Named(keyboard::key::Named::Escape)) {
-                    state.screen = Screen::Search;
+                    let vault_missing = state.config.vault_path.as_os_str().is_empty() || !state.config.vault_path.exists();
+                    state.screen = if vault_missing { Screen::Onboarding } else { Screen::Search };
                     state.settings = SettingsForm::from_config(&state.config);
                     return Task::none();
+                }
+            } else if let Screen::Onboarding = state.screen {
+                if matches!(key, keyboard::Key::Named(keyboard::key::Named::Escape)) {
+                    return Task::done(Message::Close);
                 }
             }
             Task::none()
@@ -382,12 +396,19 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
 
         Message::OpenSettings => {
             state.screen = Screen::Settings;
+            // Preserve any vault path the user typed on the onboarding screen
+            let typed_path = state.settings.vault_path.clone();
             state.settings = SettingsForm::from_config(&state.config);
+            if !typed_path.is_empty() && !typed_path.eq_ignore_ascii_case(&state.config.vault_path.to_string_lossy()) {
+                state.settings.vault_path = typed_path;
+            }
             Task::none()
         }
 
         Message::CloseSettings => {
-            state.screen = Screen::Search;
+            // Go back to Search, or Onboarding if vault is still not configured
+            let vault_missing = state.config.vault_path.as_os_str().is_empty() || !state.config.vault_path.exists();
+            state.screen = if vault_missing { Screen::Onboarding } else { Screen::Search };
             state.settings = SettingsForm::from_config(&state.config);
             Task::none()
         }
@@ -657,12 +678,21 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
 
         Message::BrowseVault => {
             let current = state.settings.vault_path.clone();
+            if current.is_empty() {
+                // Try starting from home directory
+                if let Some(home) = dirs::home_dir() {
+                    let home = home.join("Documents");
+                    let _ = std::fs::create_dir_all(&home);
+                }
+            }
             let path = rfd::FileDialog::new()
                 .set_directory(&current)
                 .pick_folder();
 
             if let Some(path) = path {
                 state.settings.vault_path = path.to_string_lossy().to_string();
+                // Also update config so onboarding reflects the chosen path
+                state.config.vault_path = path;
             }
             Task::none()
         }
@@ -906,6 +936,134 @@ fn search_view(state: &State) -> Element<'_, Message> {
         .into()
 }
 
+fn onboarding_view(state: &State) -> Element<'_, Message> {
+    let obsidian_logo = Svg::new(svg::Handle::from_memory(OBSIDIAN_SVG))
+        .width(80)
+        .height(80);
+
+    let welcome = column![
+        obsidian_logo,
+        Space::with_height(20),
+        text("Welcome to Obsidian Launcher").size(24)
+            .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(242, 242, 247)) }),
+        Space::with_height(8),
+        text("Keyboard-driven search for your Obsidian vault.").size(13)
+            .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(140, 140, 150)) }),
+    ]
+    .align_x(iced::Alignment::Center);
+
+    let vault_hint = if state.config.vault_path.as_os_str().is_empty() {
+        "No vault configured yet. Point me to your Obsidian vault!"
+    } else {
+        "The vault path you set doesn't seem to exist yet."
+    };
+
+    let vault_notice = text(vault_hint).size(13)
+        .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(180, 180, 190)) });
+
+    // Simple vault path entry with Browse — show settings path (may differ from saved config)
+    let current_path = if state.settings.vault_path.is_empty() {
+        state.config.vault_path.to_string_lossy().to_string()
+    } else {
+        state.settings.vault_path.clone()
+    };
+    let path_input = text_input("/path/to/your/vault", &current_path)
+        .id(vault_path_input_id().clone())
+        .on_input(Message::VaultPathChanged)
+        .on_submit(Message::OpenSettings)
+        .size(14)
+        .padding(12)
+        .width(Length::Fixed(400.0))
+        .style(|_theme, _status| text_input::Style {
+            background: iced::Background::Color(iced::Color::from_rgb8(44, 44, 46)),
+            border: iced::Border {
+                radius: 8.0.into(),
+                width: 1.0,
+                color: iced::Color::from_rgb8(60, 60, 65),
+            },
+            icon: iced::Color::from_rgb8(99, 99, 102),
+            placeholder: iced::Color::from_rgb8(99, 99, 102),
+            value: iced::Color::from_rgb8(242, 242, 247),
+            selection: iced::Color::from_rgb8(113, 70, 199),
+        });
+
+    let browse_btn = button(text("Browse…").size(13))
+        .on_press(Message::BrowseVault)
+        .padding(12)
+        .style(|_theme, _status| button::Style {
+            background: Some(iced::Color::from_rgb8(55, 55, 55).into()),
+            text_color: iced::Color::WHITE,
+            border: iced::Border {
+                radius: 8.0.into(),
+                width: 1.0,
+                color: iced::Color::from_rgb8(80, 80, 80),
+            },
+            shadow: iced::Shadow::default(),
+        });
+
+    let path_row = row![path_input, browse_btn]
+        .spacing(8)
+        .align_y(iced::Alignment::Center);
+
+    let action_btn = button(
+        text("Open Settings").size(14)
+    )
+    .on_press(Message::OpenSettings)
+    .padding(14)
+    .width(Length::Fixed(200.0))
+    .style(|_theme, _status| button::Style {
+        background: Some(iced::Color::from_rgb8(113, 70, 199).into()),
+        text_color: iced::Color::WHITE,
+        border: iced::Border {
+            radius: 8.0.into(),
+            width: 0.0,
+            color: iced::Color::TRANSPARENT,
+        },
+        shadow: iced::Shadow::default(),
+    });
+
+    let hint = column![
+        text("Keyboard shortcuts:").size(11)
+            .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(99, 99, 102)) }),
+        text("↑ ↓ · Navigate results  |  Enter · Open note  |  Esc · Close").size(11)
+            .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(99, 99, 102)) }),
+        text("Ctrl+R · Rebuild index  |  Ctrl+, · Settings").size(11)
+            .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(99, 99, 102)) }),
+    ]
+    .spacing(3)
+    .align_x(iced::Alignment::Center);
+
+    let content = column![
+        Space::with_height(Length::Fill),
+        welcome,
+        Space::with_height(24),
+        vault_notice,
+        Space::with_height(16),
+        path_row,
+        Space::with_height(8),
+        action_btn,
+        Space::with_height(32),
+        hint,
+        Space::with_height(Length::Fill),
+    ]
+    .align_x(iced::Alignment::Center);
+
+    container(content)
+        .padding(32)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_t| container::Style {
+            background: Some(iced::Color::from_rgb8(30, 30, 32).into()),
+            border: iced::Border {
+                radius: 14.0.into(),
+                width: 1.0,
+                color: iced::Color::from_rgba(1.0, 1.0, 1.0, 0.08),
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
 fn settings_view(state: &State) -> Element<'_, Message> {
     let s = &state.settings;
 
@@ -1090,6 +1248,7 @@ fn view(state: &State) -> Element<'_, Message> {
     match state.screen {
         Screen::Search => search_view(state),
         Screen::Settings => settings_view(state),
+        Screen::Onboarding => onboarding_view(state),
     }
 }
 
