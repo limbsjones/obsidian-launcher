@@ -71,7 +71,7 @@ const NOTE_SVG: &[u8] = br##"<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2
 <line x1="7" y1="16" x2="12" y2="16" stroke="#7146C7" stroke-width="1.5" stroke-linecap="round"/>
 </svg>"##;
 
-const OBSIDIAN_SVG: &[u8] = include_bytes!("/home/limbsjones/Desktop/icons/Obsidian.svg");
+const OBSIDIAN_SVG: &[u8] = include_bytes!("../icons/Obsidian.svg");
 
 #[derive(Debug, Clone)]
 enum Screen {

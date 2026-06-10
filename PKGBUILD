@@ -17,12 +17,13 @@ depends=(
     'xdotool'
     'wmctrl'
 )
-makedepends=('cargo' 'git')
+makedepends=('cargo' 'git' 'inkscape')
 optdepends=(
     'obsidian: the note-taking app (optional, opens notes in Obsidian)'
 )
-source=("$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+source=("$url/archive/v$pkgver.tar.gz"
+        "$url/releases/download/v$pkgver/Obsidian-Launcher-x86_64.AppImage")
+sha256sums=('SKIP' 'SKIP')
 
 prepare() {
     cd "$srcdir/$pkgname-$pkgver"
@@ -55,8 +56,14 @@ package() {
         "$pkgdir/usr/share/applications/obsidian-launcher.desktop"
 
     # Icon (converted from Obsidian SVG)
-    install -Dm644 "$srcdir/obsidian-launcher.png" \
+    inkscape --export-type=png --export-width=256 \
+        --export-filename="$srcdir/$pkgname-$pkgver/icons/obsidian-launcher.png" \
+        "$srcdir/$pkgname-$pkgver/icons/Obsidian.svg" 2>/dev/null || true
+    install -Dm644 "$srcdir/$pkgname-$pkgver/icons/obsidian-launcher.png" \
         "$pkgdir/usr/share/icons/hicolor/256x256/apps/obsidian-launcher.png" 2>/dev/null || true
+    # Also install SVG icon for scalable support
+    install -Dm644 "$srcdir/$pkgname-$pkgver/icons/Obsidian.svg" \
+        "$pkgdir/usr/share/icons/hicolor/scalable/apps/obsidian-launcher.svg"
 
     # Systemd user service
     install -Dm644 "$srcdir/obsidian-hotkey-daemon.service" \

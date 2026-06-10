@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Obsidian Launcher
+Comment=Keyboard-driven search launcher for Obsidian vaults
+Exec=obsidian-launcher
+Icon=obsidian-launcher
+Type=Application
+Categories=Utility;
+Terminal=false
+StartupNotify=false
