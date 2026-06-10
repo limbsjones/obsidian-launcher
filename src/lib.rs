@@ -71,6 +71,8 @@ const NOTE_SVG: &[u8] = br##"<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2
 <line x1="7" y1="16" x2="12" y2="16" stroke="#7146C7" stroke-width="1.5" stroke-linecap="round"/>
 </svg>"##;
 
+const OBSIDIAN_SVG: &[u8] = include_bytes!("/home/limbsjones/Desktop/icons/Obsidian.svg");
+
 #[derive(Debug, Clone)]
 enum Screen {
     Search,
@@ -472,31 +474,43 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                 state.status = format!("{} / {} results", state.display_count, total_results);
             }
 
-            // 2. Calculate scroll offset using actual rendered item height from viewport
+            // 2. Scroll to put the selected item at ~30% from the viewport top.
+            //    The item_h is computed from the actual rendered content height,
+            //    so it matches the real item height regardless of font metrics.
             let offset = if let Some(vp) = state.last_viewport.as_ref() {
                 let content_h = vp.content_bounds().height;
                 let vis_h = vp.bounds().height;
-                // Compute average item height from how the layout engine actually rendered them
-                let item_h = if state.display_count > 0 && content_h > 0.0 {
-                    content_h / state.display_count as f32
+
+                // If all items fit in the viewport, no scrolling needed
+                if content_h <= vis_h {
+                    None
                 } else {
-                    CARD_HEIGHT
-                };
-                let visible_count = (vis_h / item_h).ceil() as usize;
-                // Put the selected item at ~33% from the top of the viewport
-                let target_row = (visible_count / 3).max(1);
-                let anchor = state.selected.saturating_sub(target_row);
-                anchor as f32 * item_h
+                    let rendered_count = state.results.len().min(state.display_count);
+                    let item_h = if rendered_count > 0 && content_h > 0.0 {
+                        content_h / rendered_count as f32
+                    } else {
+                        CARD_HEIGHT
+                    };
+
+                    let max_scroll = (content_h - vis_h).max(0.0);
+                    // Target: selected item at 30% from the top of the viewport
+                    let target = state.selected as f32 * item_h - vis_h * 0.3;
+                    Some(target.clamp(0.0, max_scroll))
+                }
             } else {
-                // No viewport yet — use hardcoded estimate
-                let anchor = state.selected.saturating_sub(3);
-                anchor as f32 * CARD_HEIGHT
+                // No viewport yet — scroll to put selected item near the top
+                let anchor = state.selected.saturating_sub(2);
+                Some(anchor as f32 * CARD_HEIGHT)
             };
 
-            scrollable::scroll_to(
-                results_scroll_id().clone(),
-                iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: offset },
-            )
+            if let Some(y) = offset {
+                scrollable::scroll_to(
+                    results_scroll_id().clone(),
+                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y },
+                )
+            } else {
+                Task::none()
+            }
         }
 
         Message::ScrollViewportChanged(viewport) => {
@@ -685,11 +699,11 @@ fn search_view(state: &State) -> Element<'_, Message> {
             selection: iced::Color::from_rgb8(113, 70, 199),
         });
 
-    let icon = Svg::new(svg::Handle::from_memory(NOTE_SVG))
+    let obsidian_icon = Svg::new(svg::Handle::from_memory(OBSIDIAN_SVG))
         .width(14)
         .height(14);
     let header = row![
-        icon,
+        obsidian_icon,
         text(&state.status).size(11)
             .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(99, 99, 102)) }),
         horizontal_space(),
@@ -760,14 +774,14 @@ fn search_view(state: &State) -> Element<'_, Message> {
             }
 
             row_children.push(
-                Svg::new(svg::Handle::from_memory(FOLDER_SVG))
-                    .width(12)
-                    .height(12)
+                text(format!(" {}", result.folder)).size(10)
+                    .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(99, 99, 102)) })
                     .into()
             );
             row_children.push(
-                text(format!(" {}", result.folder)).size(10)
-                    .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(99, 99, 102)) })
+                Svg::new(svg::Handle::from_memory(FOLDER_SVG))
+                    .width(12)
+                    .height(12)
                     .into()
             );
 
@@ -776,7 +790,7 @@ fn search_view(state: &State) -> Element<'_, Message> {
             .spacing(8);
 
             let item = button(
-                    container(row_content).padding([10, 12]).width(Length::Fill)
+                    container(row_content).padding([10, 12])
                 )
                 .on_press(Message::OpenPath(result.path.clone()))
                 .padding(0)
@@ -799,7 +813,11 @@ fn search_view(state: &State) -> Element<'_, Message> {
                     }
                 });
 
-            list = list.push(item);
+            list = list.push(
+                container(item)
+                    .padding(iced::Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 0.0 })
+                    .width(Length::Fill)
+            );
         }
 
         // Add a "load more" indicator if there are more results available
@@ -825,10 +843,10 @@ fn search_view(state: &State) -> Element<'_, Message> {
                 .style(|_theme, _status| scrollable::Style {
                     container: container::Style::default(),
                     vertical_rail: scrollable::Rail {
-                        background: None,
+                        background: Some(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15).into()),
                         border: iced::Border { radius: 0.0.into(), width: 0.0, color: iced::Color::TRANSPARENT },
                         scroller: scrollable::Scroller {
-                            color: iced::Color::from_rgba(0.5, 0.5, 0.6, 0.2),
+                            color: iced::Color::from_rgba(0.5, 0.5, 0.6, 0.7),
                             border: iced::Border { radius: 4.0.into(), width: 0.0, color: iced::Color::TRANSPARENT },
                         },
                     },
@@ -836,7 +854,7 @@ fn search_view(state: &State) -> Element<'_, Message> {
                         background: None,
                         border: iced::Border { radius: 0.0.into(), width: 0.0, color: iced::Color::TRANSPARENT },
                         scroller: scrollable::Scroller {
-                            color: iced::Color::from_rgba(0.5, 0.5, 0.6, 0.2),
+                            color: iced::Color::from_rgba(0.5, 0.5, 0.6, 0.7),
                             border: iced::Border { radius: 4.0.into(), width: 0.0, color: iced::Color::TRANSPARENT },
                         },
                     },

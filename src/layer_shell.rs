@@ -87,11 +87,44 @@ pub fn init() {
             tracing::info!(
                 "window: Wayland compositor supports wlr-layer-shell ✓"
             );
-            tracing::info!(
-                "window: for a true overlay, add a window rule, e.g. for sway:\n  \
-                 for_window [app_id=\"obsidian-launcher\" shell=\"layer_shell\"] \\\n  \
-                   move position 0 0, resize set 700 400"
-            );
+            if let Ok(desktop) = std::env::var("XDG_CURRENT_DESKTOP") {
+                if desktop.to_lowercase().contains("kde") {
+                    tracing::info!(
+                        "window: KDE Plasma detected — trying KWin window rules via D-Bus"
+                    );
+                    if let Err(e) = apply_kde_kwin_rules() {
+                        tracing::warn!(
+                            "window: KWin D-Bus rule failed ({}); you can add rules manually \
+                             in System Settings → Window Management → Window Rules",
+                            e
+                        );
+                    } else {
+                        tracing::info!(
+                            "window: KWin rules applied — window is now on all desktops \
+                             and above other windows"
+                        );
+                    }
+                } else if desktop.to_lowercase().contains("sway")
+                    || desktop.to_lowercase().contains("hyprland")
+                {
+                    tracing::info!(
+                        "window: for a true overlay, add a window rule, e.g. for sway:\n  \
+                         for_window [app_id=\"obsidian-launcher\"] \\\n  \
+                           move position 0 0, resize set 700 400"
+                    );
+                } else {
+                    tracing::info!(
+                        "window: compositor {} supports layer-shell; add a window rule \
+                         for a true overlay",
+                        desktop
+                    );
+                }
+            } else {
+                tracing::info!(
+                    "window: compositor supports wlr-layer-shell; add a window rule \
+                     for a true overlay"
+                );
+            }
             let _ = WAYLAND_HAS_LAYER_SHELL.set(true);
         }
         Ok(false) => {
@@ -107,6 +140,54 @@ pub fn init() {
             );
         }
     }
+}
+
+/// Write KWin window rules for KDE Plasma so the launcher stays
+/// above other windows (including panels) and on all virtual desktops.
+///
+/// If the rule already exists it is left untouched.
+fn apply_kde_kwin_rules() -> Result<(), Box<dyn std::error::Error>> {
+    let config_path = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("kwinrulesrc");
+
+    // Skip if the rule already exists
+    if config_path.exists()
+        && std::fs::read_to_string(&config_path)
+            .map(|c| c.contains("obsidian-launcher"))
+            .unwrap_or(false)
+    {
+        tracing::debug!("layer_shell: KWin rule already exists, skipping");
+        return Ok(());
+    }
+
+    // Write a minimal kwinrulesrc with one rule for obsidian-launcher
+    use std::io::Write;
+    let mut file = std::fs::File::create(&config_path)?;
+    writeln!(file, "[General]")?;
+    writeln!(file, "count=1")?;
+    writeln!(file, "rulescount=1")?;
+    writeln!(file)?;
+    writeln!(file, "[Rule_1]")?;
+    writeln!(file, "above=true")?;
+    writeln!(file, "abovematch=0")?;
+    writeln!(file, "description=Obsidian Launcher")?;
+    writeln!(file, "keepaboverule=true")?;
+    writeln!(file, "onscreendisplay=true")?;
+    writeln!(file, "onscreendisplaymatch=0")?;
+    writeln!(file, "wmclass=obsidian-launcher")?;
+    writeln!(file, "wmclassmatch=1")?;
+
+    // Try to reconfigure KWin so the rule takes effect immediately
+    use std::process::Command;
+    let _ = Command::new("kstart5")
+        .args(["--service", "org.kde.KWin", "--", "reconfigure"])
+        .status();
+
+    tracing::info!(
+        "layer_shell: KWin window rule created for obsidian-launcher"
+    );
+    Ok(())
 }
 
 /// Open a minimal Wayland connection and check for the layer-shell global.
