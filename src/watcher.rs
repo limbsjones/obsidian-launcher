@@ -89,13 +89,20 @@ pub fn spawn_watcher_loop(
         debounce_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         debounce_timer.tick().await;
 
-        loop {
+        // Use a flag to track whether the channel is still alive.
+        let mut channel_alive = true;
+
+        while channel_alive {
             tokio::select! {
-                Some(event) = receiver.recv() => {
+                event = receiver.recv() => {
                     match event {
-                        WatcherEvent::VaultChanged => {
+                        Some(WatcherEvent::VaultChanged) => {
                             pending_rebuild = true;
                             debounce_timer.reset();
+                        }
+                        None => {
+                            warn!("Watcher channel closed — stopping watcher loop");
+                            channel_alive = false;
                         }
                     }
                 }
@@ -107,8 +114,9 @@ pub fn spawn_watcher_loop(
                         }
                     }
                 }
-                else => break,
             }
         }
+
+        info!("Watcher loop stopped");
     })
 }

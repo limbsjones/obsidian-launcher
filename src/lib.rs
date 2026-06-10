@@ -82,9 +82,9 @@ enum Message {
     SearchChanged(String),
     OpenSelected,
     OpenPath(String),
-    SearchDone(Vec<SearchResult>),
+    SearchDone(Result<Vec<SearchResult>, String>),
     RebuildIndex,
-    RebuildDone(bool),
+    RebuildDone(Result<(), String>),
     KeyPressed(keyboard::Key),
     Close,
     RaiseWindow,
@@ -98,6 +98,8 @@ enum Message {
     RecordHotkey(keyboard::Key, String),
     FocusSearch,
     ScrollToSelected,
+    ScrollViewportChanged(scrollable::Viewport),
+    LoadMoreResults,
     SaveSettings,
     SettingsSaved(Result<(), String>),
     BrowseVault,
@@ -143,10 +145,13 @@ struct State {
     search_query: String,
     results: Vec<SearchResult>,
     selected: usize,
+    display_count: usize,
     loading: bool,
     status: String,
+    error_message: Option<String>,
     watcher: Option<VaultWatcher>,
     settings: SettingsForm,
+    last_viewport: Option<scrollable::Viewport>,
 }
 
 impl Default for State {
@@ -164,10 +169,13 @@ impl Default for State {
             search_query: String::new(),
             results: Vec::new(),
             selected: 0,
+            display_count: config.max_results,
             loading: false,
             status: String::from("Initializing watcher..."),
+            error_message: None,
             watcher: None,
             settings: SettingsForm::from_config(&config),
+            last_viewport: None,
         };
 
         state.start_watcher();
@@ -188,7 +196,9 @@ impl State {
                 self.status = "Watching vault for changes".to_string();
             }
             Err(e) => {
-                self.status = format!("Watcher error: {}", e);
+                let msg = format!("Watcher error: {}", e);
+                self.status = msg.clone();
+                self.error_message = Some(msg);
             }
         }
         self.watcher = Some(watcher);
@@ -205,6 +215,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::SearchChanged(query) => {
             state.search_query = query.clone();
             state.selected = 0;
+            state.error_message = None;
 
             if query.is_empty() {
                 state.results.clear();
@@ -214,6 +225,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
 
             state.loading = true;
             state.status = format!("Searching '{}'...", query);
+            state.error_message = None;
 
             let index_path = state.config.index_path();
             let max_results = state.config.max_results;
@@ -226,15 +238,17 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                     let search_index = match SearchIndex::open_or_create(&index_path) {
                         Ok(si) => si,
                         Err(e) => {
-                            info!("Failed to open index: {}", e);
-                            return Vec::new();
+                            let msg = format!("Failed to open search index: {}", e);
+                            info!("{}", msg);
+                            return Err(msg);
                         }
                     };
                     let results = match search_index.search(&query, max_results) {
                         Ok(r) => r,
                         Err(e) => {
-                            info!("Search failed: {}", e);
-                            return Vec::new();
+                            let msg = format!("Search failed: {}", e);
+                            info!("{}", msg);
+                            return Err(msg);
                         }
                     };
                     info!("Search returned {} results", results.len());
@@ -249,55 +263,83 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                             wikilinks,
                         });
                     }
-                    search_results
+                    Ok(search_results)
                 },
                 Message::SearchDone,
             )
         }
 
         Message::SearchDone(results) => {
-            info!("SearchDone with {} results", results.len());
-            state.results = results;
             state.loading = false;
-            state.status = format!("{} results", state.results.len());
+            match results {
+                Ok(results) => {
+                    state.results = results;
+                    state.display_count = state.config.max_results;
+                    state.selected = 0;
+                    state.error_message = None;
+                    state.status = format!("{} results", state.results.len());
+                }
+                Err(e) => {
+                    state.results.clear();
+                    state.error_message = Some(e);
+                    state.status = "Search error".to_string();
+                }
+            }
             Task::none()
         }
 
         Message::OpenSelected => {
-            if state.selected < state.results.len() {
-                let path = state.results[state.selected].path.clone();
-                open_note(&path, &state.config.vault_path);
+            if state.selected >= state.results.len() {
+                // No result selected — nothing to do, stay open
+                return Task::none();
+            }
+            let path = state.results[state.selected].path.clone();
+            if let Err(e) = open_note(&path, &state.config.vault_path) {
+                warn!("{}", e);
+                state.error_message = Some(e);
+                return Task::none();
             }
             Task::done(Message::Close)
         }
 
         Message::OpenPath(path) => {
             info!("OpenPath: {}", path);
-            open_note(&path, &state.config.vault_path);
+            if let Err(e) = open_note(&path, &state.config.vault_path) {
+                warn!("{}", e);
+                state.error_message = Some(e);
+                return Task::none();
+            }
             Task::done(Message::Close)
         }
 
         Message::RebuildIndex => {
             state.loading = true;
             state.status = String::from("Rebuilding index...");
+            state.error_message = None;
 
             let config = state.config.clone();
 
             Task::perform(
                 async move {
-                    watcher::rebuild_vault_index(&config).ok()
+                    watcher::rebuild_vault_index(&config)
+                        .map_err(|e| format!("Index rebuild failed: {}", e))
                 },
-                |success| Message::RebuildDone(success.is_some()),
+                Message::RebuildDone,
             )
         }
 
-        Message::RebuildDone(success) => {
+        Message::RebuildDone(result) => {
             state.loading = false;
-            state.status = if success {
-                String::from("Index rebuilt")
-            } else {
-                String::from("Index rebuild failed")
-            };
+            match result {
+                Ok(()) => {
+                    state.error_message = None;
+                    state.status = String::from("Index rebuilt");
+                }
+                Err(e) => {
+                    state.error_message = Some(e.clone());
+                    state.status = "Index rebuild failed".to_string();
+                }
+            }
             Task::none()
         }
 
@@ -422,15 +464,78 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
 
         Message::ScrollToSelected => {
-            let anchor = state.selected.saturating_sub(5);
-            let offset = anchor as f32 * CARD_HEIGHT;
-            scrollable::scroll_to(results_scroll_id().clone(), iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: offset })
+            // 1. Auto-load more results if selection is beyond displayed items
+            let total_results = state.results.len();
+            if state.selected >= state.display_count && state.display_count < total_results {
+                let increment = state.config.max_results.max(20);
+                state.display_count = (state.display_count + increment).min(total_results);
+                state.status = format!("{} / {} results", state.display_count, total_results);
+            }
+
+            // 2. Calculate scroll offset using actual rendered item height from viewport
+            let offset = if let Some(vp) = state.last_viewport.as_ref() {
+                let content_h = vp.content_bounds().height;
+                let vis_h = vp.bounds().height;
+                // Compute average item height from how the layout engine actually rendered them
+                let item_h = if state.display_count > 0 && content_h > 0.0 {
+                    content_h / state.display_count as f32
+                } else {
+                    CARD_HEIGHT
+                };
+                let visible_count = (vis_h / item_h).ceil() as usize;
+                // Put the selected item at ~33% from the top of the viewport
+                let target_row = (visible_count / 3).max(1);
+                let anchor = state.selected.saturating_sub(target_row);
+                anchor as f32 * item_h
+            } else {
+                // No viewport yet — use hardcoded estimate
+                let anchor = state.selected.saturating_sub(3);
+                anchor as f32 * CARD_HEIGHT
+            };
+
+            scrollable::scroll_to(
+                results_scroll_id().clone(),
+                iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: offset },
+            )
+        }
+
+        Message::ScrollViewportChanged(viewport) => {
+            state.last_viewport = Some(viewport.clone());
+            // When the user scrolls near the bottom (within 60px), load more results
+            let offset = viewport.absolute_offset();
+            let visible = viewport.bounds().height;
+            let total = viewport.content_bounds().height;
+            let near_bottom = total > 0.0 && (offset.y + visible >= total - 60.0);
+
+            if near_bottom && !state.results.is_empty() {
+                return Task::done(Message::LoadMoreResults);
+            }
+            Task::none()
+        }
+
+        Message::LoadMoreResults => {
+            let total = state.results.len();
+            if state.display_count < total {
+                // Increase display count by one page, but cap at total
+                let increment = state.config.max_results.max(20);
+                state.display_count = (state.display_count + increment).min(total);
+                state.status = format!("{} / {} results", state.display_count, total);
+            }
+            Task::none()
         }
 
         Message::SaveSettings => {
             let vault_path = state.settings.vault_path.clone();
+            if vault_path.trim().is_empty() {
+                state.settings.error = Some("Vault path cannot be empty".to_string());
+                return Task::none();
+            }
             let max_results: usize = match state.settings.max_results.parse() {
-                Ok(n) => n,
+                Ok(n) if n > 0 && n <= 500 => n,
+                Ok(_) => {
+                    state.settings.error = Some("Max results must be between 1 and 500".to_string());
+                    return Task::none();
+                }
                 Err(_) => {
                     state.settings.error = Some("Max results must be a number".to_string());
                     return Task::none();
@@ -439,6 +544,14 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             let hotkey = if state.settings.hotkey.is_empty() {
                 None
             } else {
+                // Basic validation: at least one modifier + a key
+                let parts: Vec<&str> = state.settings.hotkey.split('+').collect();
+                if parts.len() < 2 {
+                    state.settings.error = Some(
+                        "Hotkey must include at least one modifier and a key (e.g. Super+Space)".to_string()
+                    );
+                    return Task::none();
+                }
                 Some(state.settings.hotkey.clone())
             };
 
@@ -541,6 +654,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
 
         Message::Close => {
+            // Clean up socket before exit to prevent stale socket issues
+            let socket_path = config::socket_path();
+            if socket_path.exists() {
+                let _ = std::fs::remove_file(&socket_path);
+            }
             std::process::exit(0);
         }
     }
@@ -581,6 +699,26 @@ fn search_view(state: &State) -> Element<'_, Message> {
 
     let mut col: Column<Message> = column![search_bar].spacing(8);
 
+    if let Some(ref error) = state.error_message {
+        col = col.push(
+            container(
+                text(format!("⚠ {}", error)).size(13)
+                    .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(255, 159, 159)) })
+            )
+            .padding([8, 12])
+            .width(Length::Fill)
+            .style(|_theme| container::Style {
+                background: Some(iced::Color::from_rgba8(239, 68, 68, 0.12).into()),
+                border: iced::Border {
+                    radius: 8.0.into(),
+                    width: 1.0,
+                    color: iced::Color::from_rgba8(239, 68, 68, 0.3),
+                },
+                ..Default::default()
+            })
+        );
+    }
+
     if state.results.is_empty() && !state.search_query.is_empty() && !state.loading {
         col = col.push(
             container(text("No results found").size(13)
@@ -594,7 +732,7 @@ fn search_view(state: &State) -> Element<'_, Message> {
     if !state.results.is_empty() {
         let mut list = Column::new().spacing(2);
 
-        for (i, result) in state.results.iter().enumerate() {
+        for (i, result) in state.results.iter().take(state.display_count).enumerate() {
             let is_selected = i == state.selected;
 
 
@@ -664,9 +802,25 @@ fn search_view(state: &State) -> Element<'_, Message> {
             list = list.push(item);
         }
 
+        // Add a "load more" indicator if there are more results available
+        let total_results = state.results.len();
+        if state.display_count < total_results {
+            let remaining = total_results - state.display_count;
+            list = list.push(
+                container(
+                    text(format!("↓ {} more results — scroll to load", remaining)).size(11)
+                        .style(|_theme| text::Style { color: Some(iced::Color::from_rgb8(110, 110, 120)) })
+                )
+                .padding([8, 12])
+                .width(Length::Fill)
+                .center_x(Length::Fill)
+            );
+        }
+
         col = col.push(
             scrollable(list)
                 .id(results_scroll_id().clone())
+                .on_scroll(Message::ScrollViewportChanged)
                 .height(Length::Fill)
                 .style(|_theme, _status| scrollable::Style {
                     container: container::Style::default(),
@@ -1081,11 +1235,12 @@ fn theme(_state: &State) -> Theme {
     Theme::Dark
 }
 
-fn focus_obsidian() {
-    if let Ok(_) = Command::new("xdotool")
+fn focus_obsidian() -> Result<(), String> {
+    Command::new("xdotool")
         .args(["search", "--name", "Obsidian", "windowactivate"])
         .status()
-    {}
+        .map(|_| ())
+        .map_err(|e| format!("Failed to focus Obsidian: {} (is xdotool installed?)", e))
 }
 
 fn encode_path(s: &str) -> String {
@@ -1095,7 +1250,7 @@ fn encode_path(s: &str) -> String {
         .join("/")
 }
 
-fn open_note(path: &str, vault_path: &PathBuf) {
+fn open_note(path: &str, vault_path: &PathBuf) -> Result<(), String> {
     info!("Opening note: {}", path);
 
     let relative = path
@@ -1105,11 +1260,14 @@ fn open_note(path: &str, vault_path: &PathBuf) {
     let url = format!("obsidian://open?file={}", encode_path(relative));
 
     info!("Opening URL: {}", url);
-    if let Err(e) = Command::new("xdg-open").arg(&url).status() {
-        warn!("Failed to open note: {}", e);
-    }
+    Command::new("xdg-open")
+        .arg(&url)
+        .status()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open note: {} (is xdg-open installed?)", e))?;
 
-    focus_obsidian();
+    focus_obsidian().ok();
+    Ok(())
 }
 
 fn strip_emoji(s: &str) -> String {
@@ -1163,6 +1321,21 @@ pub fn run_app() -> iced::Result {
         .with_max_level(tracing::Level::INFO)
         .init();
 
+    // Set up panic hook to log panics (init after tracing so logging works)
+    std::panic::set_hook(Box::new(|panic_info| {
+        let msg = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic".to_string()
+        };
+        let location = panic_info.location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_default();
+        eprintln!("⚠️  PANIC: {} at {}", msg, location);
+    }));
+
     let listener = check_single_instance();
     let _ = INSTANCE_LISTENER.set(std::sync::Mutex::new(listener));
 
@@ -1177,10 +1350,12 @@ pub fn run_app() -> iced::Result {
     if !config.vault_path.exists() {
         eprintln!("Vault not found at {:?}", config.vault_path);
         eprintln!("Edit config at ~/.config/obsidian-launcher/config.toml");
-        std::process::exit(1);
+        eprintln!("You can also change the vault path from Settings (Ctrl+,) after starting.");
+        eprintln!("Starting with empty index temporarily.");
+        // Don't exit — let the user configure the path via settings
     }
 
-    if !config.index_path().exists() {
+    if config.vault_path.exists() && !config.index_path().exists() {
         info!("No index found, building initial index...");
         let vault = Vault::new(config.vault_path.clone());
         match vault.scan() {
@@ -1189,15 +1364,18 @@ pub fn run_app() -> iced::Result {
                     Ok(mut search_index) => {
                         if let Err(e) = search_index.index_notes(&notes) {
                             eprintln!("Failed to build initial index: {}", e);
+                            eprintln!("Index will be built when you search or rebuild from the app.");
                         }
                     }
                     Err(e) => {
                         eprintln!("Failed to create search index: {}", e);
+                        eprintln!("Check permissions on {:?}", config.index_path());
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to scan vault: {}. Start the app anyway?", e);
+                eprintln!("Warning: Failed to scan vault: {}", e);
+                eprintln!("The index will be built when files change or you search.");
             }
         }
     }

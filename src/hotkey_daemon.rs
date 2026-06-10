@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -16,6 +16,9 @@ pub struct HotkeyDaemon {
     running: bool,
 }
 
+// Linux ENODEV = 19 (No such device)
+const ENODEV: i32 = 19;
+
 impl HotkeyDaemon {
     pub fn new(config: Config) -> Self {
         Self {
@@ -28,43 +31,94 @@ impl HotkeyDaemon {
         info!("Hotkey daemon starting");
         info!("Listening for hotkey: {:?}", self.config.hotkey);
 
-        let devices = self.find_keyboard_devices();
-        if devices.is_empty() {
-            warn!("No keyboard devices found");
-            return;
-        }
-
-        info!("Found {} keyboard device(s)", devices.len());
-
         let hotkey = self.config.hotkey.clone().unwrap_or_default();
         let (target_modifiers, target_key) = parse_hotkey(&hotkey);
-
         info!("Parsed hotkey: modifiers={:?}, key={:?}", target_modifiers, target_key);
 
         let pressed_modifiers: Arc<Mutex<HashSet<Key>>> = Arc::new(Mutex::new(HashSet::new()));
+        let active_paths: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
 
-        for mut device in devices {
-            let dev_name = device.name().unwrap_or("unknown").to_string();
-            info!("Listening on keyboard: {}", dev_name);
+        // Initial scan & spawn
+        self.scan_and_spawn(&active_paths, &pressed_modifiers, &target_modifiers, target_key);
 
-            let target_mods = target_modifiers.clone();
+        // Main loop: rescan periodically and clean up finished threads
+        let mut spawn_count: usize = 0;
+        while self.running {
+            thread::sleep(Duration::from_secs(2));
+
+            // Remove paths whose threads have exited (disconnected keyboards)
+            {
+                let mut active = active_paths.lock().unwrap();
+                active.retain(|p| {
+                    // Keep only paths whose device file still exists
+                    p.exists()
+                });
+            }
+
+            self.scan_and_spawn(&active_paths, &pressed_modifiers, &target_modifiers, target_key);
+            spawn_count += 1;
+
+            if spawn_count % 30 == 0 {
+                info!("Hotkey daemon still running, {} active path(s)",
+                    active_paths.lock().unwrap().len());
+            }
+        }
+    }
+
+    fn scan_and_spawn(
+        &self,
+        active_paths: &Arc<Mutex<HashSet<PathBuf>>>,
+        pressed_modifiers: &Arc<Mutex<HashSet<Key>>>,
+        target_modifiers: &[Key],
+        target_key: Key,
+    ) {
+        let devices = self.find_keyboard_devices_with_paths();
+        if devices.is_empty() {
+            return;
+        }
+
+        for (path, mut device) in devices {
+            let path_str = path.to_string_lossy().to_string();
+            {
+                let active = active_paths.lock().unwrap();
+                if active.contains(&path) {
+                    continue; // Already monitored
+                }
+            }
+
+            // Register this path and spawn a monitoring thread
+            active_paths.lock().unwrap().insert(path.clone());
+
+            let mods = Arc::clone(pressed_modifiers);
+            let target_mods = target_modifiers.to_vec();
             let target_k = target_key;
             let config = self.config.clone();
-            let mods = pressed_modifiers.clone();
+            let active_paths_clone = Arc::clone(active_paths);
+            let dev_path = path.clone();
 
             thread::spawn(move || {
-                loop {
+                let dev_name = device.name().unwrap_or("unknown").to_string();
+                info!("Listening on keyboard: {} ({})", dev_name, path_str);
+
+                'event_loop: loop {
                     let events = match device.fetch_events() {
                         Ok(events) => events,
                         Err(e) => {
-                            warn!("Failed to fetch events from {}: {}", dev_name, e);
-                            thread::sleep(Duration::from_millis(100));
-                            continue;
+                            let is_disconnected = e.raw_os_error() == Some(ENODEV);
+                            if is_disconnected {
+                                info!("Keyboard disconnected: {} ({})", dev_name, path_str);
+                            } else {
+                                warn!("Failed to fetch events from {}: {}", dev_name, e);
+                                thread::sleep(Duration::from_millis(100));
+                                continue;
+                            }
+                            break 'event_loop;
                         }
                     };
 
                     for event in events {
-                        if event.event_type() != EventType::KEY {
+                        let event_type = event.event_type();
+                        if event_type != EventType::KEY {
                             continue;
                         }
 
@@ -78,12 +132,19 @@ impl HotkeyDaemon {
 
                         if is_press {
                             if is_modifier(key) {
-                                let mut map = mods.lock().unwrap();
-                                map.insert(key);
+                                if let Ok(mut map) = mods.lock() {
+                                    map.insert(key);
+                                }
                             }
 
                             if key == target_k {
-                                let map = mods.lock().unwrap();
+                                let map = match mods.lock() {
+                                    Ok(m) => m,
+                                    Err(_) => {
+                                        warn!("Mutex poisoned, skipping key event");
+                                        continue;
+                                    }
+                                };
                                 let pressed_count = modifier_group_count(&map);
                                 let target_count = target_modifier_group_count(&target_mods);
                                 let mods_match = target_mods.iter().all(|m| modifier_active(*m, &map));
@@ -100,20 +161,20 @@ impl HotkeyDaemon {
                                 }
                             }
                         } else if is_release {
-                            let mut map = mods.lock().unwrap();
-                            map.remove(&key);
+                            if let Ok(mut map) = mods.lock() {
+                                map.remove(&key);
+                            }
                         }
                     }
                 }
-            });
-        }
 
-        while self.running {
-            thread::sleep(Duration::from_secs(1));
+                // On exit (disconnect), remove from active paths so reconnection is possible
+                active_paths_clone.lock().unwrap().remove(&dev_path);
+            });
         }
     }
 
-    fn find_keyboard_devices(&self) -> Vec<Device> {
+    fn find_keyboard_devices_with_paths(&self) -> Vec<(PathBuf, Device)> {
         let mut devices = Vec::new();
 
         let input_path = Path::new("/dev/input");
@@ -149,7 +210,7 @@ impl HotkeyDaemon {
             match Device::open(&path) {
                 Ok(device) => {
                     if device.supported_keys().map_or(false, |keys| keys.contains(Key::KEY_A)) {
-                        devices.push(device);
+                        devices.push((path, device));
                     }
                 }
                 Err(e) => {

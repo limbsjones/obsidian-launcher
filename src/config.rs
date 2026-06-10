@@ -2,14 +2,19 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 fn home_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"))
+    dirs::home_dir().unwrap_or_else(|| {
+        warn!("Could not determine home directory, falling back to /tmp");
+        PathBuf::from("/tmp")
+    })
 }
 
 fn cache_dir() -> PathBuf {
     dirs::cache_dir().unwrap_or_else(|| {
         let home = home_dir();
+        warn!("Could not determine cache directory, falling back to {}/.cache", home.display());
         PathBuf::from(format!("{}/.cache", home.display()))
     })
 }
@@ -17,13 +22,17 @@ fn cache_dir() -> PathBuf {
 fn config_dir() -> PathBuf {
     dirs::config_dir().unwrap_or_else(|| {
         let home = home_dir();
+        warn!("Could not determine config directory, falling back to {}/.config", home.display());
         PathBuf::from(format!("{}/.config", home.display()))
     })
 }
 
 pub fn socket_path() -> PathBuf {
     dirs::runtime_dir()
-        .unwrap_or_else(|| std::env::temp_dir())
+        .unwrap_or_else(|| {
+            warn!("Could not determine runtime directory, falling back to temp dir for socket");
+            std::env::temp_dir()
+        })
         .join("obsidian-launcher.sock")
 }
 

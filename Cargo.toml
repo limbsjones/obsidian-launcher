@@ -18,7 +18,7 @@ path = "src/bin/test_search.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-tantivy = "0.22"
+tantivy = "0.26"
 notify = "6"
 pulldown-cmark = "0.12"
 serde = { version = "1", features = ["derive"] }

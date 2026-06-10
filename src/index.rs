@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tantivy::{
     collector::TopDocs,
     doc,
@@ -89,13 +89,13 @@ impl SearchIndex {
     pub fn index_notes(&mut self, notes: &[Note]) -> Result<()> {
         info!("Indexing {} notes...", notes.len());
 
-        let title = self.schema.get_field("title").expect("schema field 'title'");
-        let content = self.schema.get_field("content").expect("schema field 'content'");
-        let path = self.schema.get_field("path").expect("schema field 'path'");
-        let tags = self.schema.get_field("tags").expect("schema field 'tags'");
-        let wikilinks = self.schema.get_field("wikilinks").expect("schema field 'wikilinks'");
+        let title = self.get_field("title")?;
+        let content = self.get_field("content")?;
+        let path = self.get_field("path")?;
+        let tags = self.get_field("tags")?;
+        let wikilinks = self.get_field("wikilinks")?;
 
-        let mut index_writer: IndexWriter = self.index.writer(50_000_000)?;
+        let mut index_writer: IndexWriter<TantivyDocument> = self.index.writer(50_000_000)?;
 
         index_writer.delete_all_documents()?;
 
@@ -118,16 +118,22 @@ impl SearchIndex {
         Ok(())
     }
 
+    /// Get a schema field by name, returning an error instead of panicking.
+    fn get_field(&self, name: &str) -> Result<tantivy::schema::Field> {
+        self.schema
+            .get_field(name)
+            .with_context(|| format!("Schema field '{}' not found — index may be corrupt or from a different version", name))
+    }
+
     pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<(String, String, Vec<String>)>> {
         let reader = self.index.reader()?;
         let searcher = reader.searcher();
 
-        let title = self.schema.get_field("title").expect("schema field 'title'");
-        let content = self.schema.get_field("content").expect("schema field 'content'");
-        let path = self.schema.get_field("path").expect("schema field 'path'");
-        let tags = self.schema.get_field("tags").expect("schema field 'tags'");
-
-        let wikilinks = self.schema.get_field("wikilinks").expect("schema field 'wikilinks'");
+        let title = self.get_field("title")?;
+        let content = self.get_field("content")?;
+        let path = self.get_field("path")?;
+        let tags = self.get_field("tags")?;
+        let wikilinks = self.get_field("wikilinks")?;
 
         let query_parser = QueryParser::for_index(&self.index, vec![title, content, tags, wikilinks]);
         let escaped = query_str
@@ -143,7 +149,7 @@ impl SearchIndex {
 
         info!("Searching for '{}' with limit {}", query_str, limit);
 
-        let top_docs = TopDocs::with_limit(limit);
+        let top_docs = TopDocs::with_limit(limit).order_by_score();
         let results = searcher.search(&query, &top_docs)?;
 
         info!("Found {} raw results", results.len());
