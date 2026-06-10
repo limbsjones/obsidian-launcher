@@ -2,7 +2,7 @@
 
 A keyboard-driven GUI launcher and search tool for Obsidian vaults, inspired by [Vicinae](https://docs.vicinae.com/).
 
-![Screenshot](screenshot.png)
+![Screenshot](screenshot-real.png)
 
 ## Features
 
