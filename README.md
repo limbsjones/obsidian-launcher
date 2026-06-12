@@ -1,6 +1,6 @@
 # Obsidian Launcher
 
-A keyboard-driven GUI launcher and search tool for Obsidian vaults, inspired by [Vicinae](https://docs.vicinae.com/).
+A keyboard-driven GUI launcher and search tool for Obsidian vaults.
 
 ![Screenshot](screenshot-real.png)
 
