@@ -189,34 +189,34 @@ cargo build --release
 
 ## Omarchy
 
-Pour intégrer Obsidian Launcher dans le lanceur **Omarchy** ([Walker](https://github.com/abenz1267/walker), `Super + Espace`) :
+To add Obsidian Launcher to the **Omarchy** app launcher ([Walker](https://github.com/abenz1267/walker), `Super + Space`) :
 
-### 1. Installer le binaire
+### 1. Install the binary
 
-**Option A — AppImage (recommandé)** :
+**Option A — AppImage (recommended)** :
 ```bash
-# Télécharger depuis https://github.com/limbsjones/obsidian-launcher/releases
+# Download from https://github.com/limbsjones/obsidian-launcher/releases
 chmod +x Obsidian-Launcher-x86_64.AppImage
 sudo cp Obsidian-Launcher-x86_64.AppImage /usr/local/bin/obsidian-launcher
 ```
 
-**Option B — build depuis les sources** :
+**Option B — build from source** :
 ```bash
 cp target/release/obsidian-launcher ~/.cargo/bin/
 ```
 
-### 2. Installer l'icône
+### 2. Install the icon
 
 ```bash
 mkdir -p ~/.local/share/applications/icons
 cp obsidian-launcher.png ~/.local/share/applications/icons/
-# Copie aussi dans le thème hicolor pour compatibilité générale
+# Also install in the hicolor theme for general compatibility
 mkdir -p ~/.local/share/icons/hicolor/48x48/apps
 cp obsidian-launcher.png ~/.local/share/icons/hicolor/48x48/apps/
 gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
 ```
 
-### 3. Installer le fichier `.desktop`
+### 3. Install the `.desktop` file
 
 ```bash
 mkdir -p ~/.local/share/applications
@@ -226,9 +226,9 @@ chmod +x ~/.local/share/applications/obsidian-launcher.desktop
 update-desktop-database ~/.local/share/applications
 ```
 
-### 4. Alternative — bundle Omarchy
+### 4. Alternative — Omarchy bundle
 
-Si tu veux que le `.desktop` soit géré comme un bundle Omarchy officiel (et survive à `omarchy-refresh-applications`) :
+To make the `.desktop` survive `omarchy-refresh-applications` (managed as a first-party Omarchy bundle) :
 
 ```bash
 mkdir -p ~/.local/share/omarchy/applications
@@ -237,9 +237,9 @@ sed 's|^Icon=.*|Icon=~/.local/share/applications/icons/obsidian-launcher.png|' \
 omarchy-refresh-applications
 ```
 
-> 💡 **Remarque AppImage** : si tu utilises l'AppImage système (`/usr/local/bin/obsidian-launcher`), le `.desktop` par défaut avec `Exec=obsidian-launcher` fonctionne déjà — aucun ajustement nécessaire. Si l'AppImage traîne dans un chemin perso, remplace `Exec` par le chemin absolu.
+> 💡 **AppImage note** : if the AppImage lives at `/usr/local/bin/obsidian-launcher` (system-wide), the default `.desktop` with `Exec=obsidian-launcher` just works — no adjustment needed. If it's somewhere else, update `Exec` to the absolute path.
 
-Walker détecte automatiquement les `.desktop` dans `~/.local/share/applications/`. Appuie sur `Super + Espace` et cherche « Obsidian » pour lancer l'app.
+Walker automatically picks up `.desktop` files from `~/.local/share/applications/`. Press `Super + Space` and type "Obsidian" to launch.
 
 ## Tech Stack
 
