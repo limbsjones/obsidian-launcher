@@ -187,6 +187,47 @@ cargo build --release
 - **AUR** — planned
 - **deb / rpm** — planned
 
+## Omarchy
+
+Pour intégrer Obsidian Launcher dans le lanceur **Omarchy** ([Walker](https://github.com/abenz1267/walker), `Super + Espace`) :
+
+1. **Installer le binaire** dans le PATH :
+   ```bash
+   cp target/release/obsidian-launcher ~/.cargo/bin/
+   ```
+
+2. **Installer l'icône** dans le dossier d'icônes standard Omarchy :
+   ```bash
+   mkdir -p ~/.local/share/applications/icons
+   cp obsidian-launcher.png ~/.local/share/applications/icons/
+   # Copie aussi dans le thème hicolor pour compatibilité générale
+   mkdir -p ~/.local/share/icons/hicolor/48x48/apps
+   cp obsidian-launcher.png ~/.local/share/icons/hicolor/48x48/apps/
+   gtk-update-icon-cache ~/.local/share/icons/hicolor &>/dev/null
+   ```
+
+3. **Installer le fichier `.desktop`** :
+   ```bash
+   mkdir -p ~/.local/share/applications
+   # Ajuster le chemin de l'icône dans le fichier .desktop
+   sed 's|^Icon=.*|Icon=~/.local/share/applications/icons/obsidian-launcher.png|' \
+       obsidian-launcher.desktop > ~/.local/share/applications/obsidian-launcher.desktop
+   chmod +x ~/.local/share/applications/obsidian-launcher.desktop
+   update-desktop-database ~/.local/share/applications
+   ```
+
+4. **Alternative — via `omarchy-refresh-applications`** (si tu veux que le `.desktop` soit géré comme un bundle Omarchy) :
+   ```bash
+   # Copier le .desktop personnalisé dans le dossier Omarchy
+   mkdir -p ~/.local/share/omarchy/applications
+   sed 's|^Icon=.*|Icon=~/.local/share/applications/icons/obsidian-launcher.png|' \
+       obsidian-launcher.desktop > ~/.local/share/omarchy/applications/obsidian-launcher.desktop
+   # Rafraîchir tous les .desktop Omarchy
+   omarchy-refresh-applications
+   ```
+
+Walker détecte automatiquement les `.desktop` dans `~/.local/share/applications/`. Appuie sur `Super + Espace` et cherche « Obsidian » pour lancer l'app.
+
 ## Tech Stack
 
 | Component | Library |
